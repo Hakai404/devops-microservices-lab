@@ -2,7 +2,6 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
-
   "dependencies": {
     "axios": "^1.12.2",
     "react": "^19.1.1",
@@ -12,10 +11,11 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^6.1.4",
     "@testing-library/react": "^14.1.2",
-    "@testing-library/user-event": "^14.5.1"
+    "@testing-library/user-event": "^14.5.1",
+    "cross-env": "^10.1.0"
   },
   "scripts": {
-    "start": "PORT=3030 react-scripts start",
+    "start": "cross-env PORT=3030 react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
