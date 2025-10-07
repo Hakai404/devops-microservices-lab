@@ -1,0 +1,36 @@
+# Build artifacts
+bin
+obj
+out
+
+# Dependencies
+*.dll
+*.exe
+*.pdb
+
+# Environment
+.env
+.env.*
+
+# IDE
+.vscode
+.vs
+.idea
+*.swp
+*.swo
+*~
+*.user
+*.userosscache
+*.suo
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+*.md
+
+# Application data
+data

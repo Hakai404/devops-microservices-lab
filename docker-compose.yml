@@ -1,0 +1,164 @@
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: expenses-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: expense_db
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - expenses-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: expenses-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - expenses-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Backend API Service
+  backend:
+    build:
+      context: ./packages/backend
+      dockerfile: Dockerfile
+    image: expenses-backend:latest
+    container_name: expenses-backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      MONGO_URI: mongodb://mongodb:27017/expense_db
+      RABBITMQ_URL: amqp://rabbitmq
+      RABBITMQ_VHOST: /
+      RABBITMQ_EXCHANGE: expenses_exchange
+      JWT_SECRET: ${JWT_SECRET:-secret-key}
+      PORT: 3000
+      UPLOAD_PATH: ./uploads
+    volumes:
+      - backend_uploads:/app/uploads
+    networks:
+      - expenses-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Frontend Web Application
+  frontend:
+    build:
+      context: ./packages/frontend
+      dockerfile: Dockerfile
+    image: expenses-frontend:latest
+    container_name: expenses-frontend
+    restart: unless-stopped
+    ports:
+      - "3030:80"
+    networks:
+      - expenses-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Message Processor Service
+  processor:
+    build:
+      context: ./packages/processor
+      dockerfile: Dockerfile
+    image: expenses-processor:latest
+    container_name: expenses-processor
+    restart: unless-stopped
+    environment:
+      RABBITMQ_URL: amqp://rabbitmq
+      RABBITMQ_VHOST: /
+      RABBITMQ_EXCHANGE: expenses_exchange
+      RABBITMQ_QUEUE: expenses_queue
+      OUTPUT_DIR: /app/messages
+    volumes:
+      - processor_messages:/app/messages
+    networks:
+      - expenses-network
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+  # Lake Publisher Service
+  lakepublisher:
+    build:
+      context: ./packages/lakepublisher
+      dockerfile: Dockerfile
+    image: expenses-lakepublisher:latest
+    container_name: expenses-lakepublisher
+    restart: "no"  # Run once, don't restart
+    environment:
+      API_BASE_URL: http://backend:3000
+      API_TOKEN: ${LAKEPUBLISHER_TOKEN:-lakepublisher-token-2024}
+      TARGET_STATUS: Approved
+      BASE_PATH: /app/data
+    volumes:
+      - lakepublisher_data:/app/data
+    networks:
+      - expenses-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    profiles:
+      - analytics  # Only start with --profile analytics
+
+# Persistent Volumes
+volumes:
+  mongodb_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  backend_uploads:
+    driver: local
+  processor_messages:
+    driver: local
+  lakepublisher_data:
+    driver: local
+
+# Network Configuration
+networks:
+  expenses-network:
+    driver: bridge
+    name: expenses-network
